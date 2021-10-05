@@ -1,105 +1,179 @@
-let store = {
-    user: { name: "Student" },
-    apod: '',
+let store = Immutable.fromJS({
+    active: '',
     rovers: ['Curiosity', 'Opportunity', 'Spirit'],
-}
-
-// add our markup to the page
-const root = document.getElementById('root')
+    roverImages: [],
+    roverAttributes: {},
+});
 
 const updateStore = (store, newState) => {
-    store = Object.assign(store, newState)
-    render(root, store)
-}
+    store = store.merge(newState);
+    render(root, store);
+};
 
-const render = async (root, state) => {
-    root.innerHTML = App(state)
-}
+// Add our markup to the page
+const root = document.getElementById('root');
+
+const render = (root, state) => {
+    root.innerHTML = App(state);
+};
+
+window.addEventListener('DOMContentLoaded', () => render(root, store));
 
 
-// create content
+// Create content
 const App = (state) => {
-    let { rovers, apod } = state
+    const rovers = state.get('rovers');
+    const activeLink = state.get('active');
+    const roverAttributes = state.get('roverAttributes');
+    const roverImages = state.get('roverImages');
 
-    return `
-        <header></header>
+    return (`
+        <header class="global-head">
+            <h1 class="global-head-logo">
+                <strong>NASA</strong> Rover Explorer
+            </h1>
+            <nav class="global-head-nav">
+                <ul>
+                    ${RoverLinks(rovers, activeLink)}
+                </ul>
+            </nav>
+        </header>
         <main>
-            ${Greeting(store.user.name)}
-            <section>
-                <h3>Put things on the page!</h3>
-                <p>Here is an example section.</p>
-                <p>
-                    One of the most popular websites at NASA is the Astronomy Picture of the Day. In fact, this website is one of
-                    the most popular websites across all federal agencies. It has the popular appeal of a Justin Bieber video.
-                    This endpoint structures the APOD imagery and associated metadata so that it can be repurposed for other
-                    applications. In addition, if the concept_tags parameter is set to True, then keywords derived from the image
-                    explanation are returned. These keywords could be used as auto-generated hashtags for twitter or instagram feeds;
-                    but generally help with discoverability of relevant imagery.
-                </p>
-                ${ImageOfTheDay(apod)}
-            </section>
+            ${RoverAttributes(roverAttributes)}
+            ${RoverImages(roverImages)}
         </main>
-        <footer></footer>
-    `
-}
+    `);
+};
 
-// listening for load event because page should load before any JS is called
-window.addEventListener('load', () => {
-    render(root, store)
-})
 
-// ------------------------------------------------------  COMPONENTS
+// UTILITY FUNCTIONS
+/**
+ * A higher-order function that prevents multiple calls of the provided function until the initial call has resolved.
+ *
+ * @param {Function} callback 
+ * @returns {Function}
+ */
+const cullExecutionUntilResolved = (callback) => {
+    let isResolved = true;
 
-// Pure function that renders conditional information -- THIS IS JUST AN EXAMPLE, you can delete it.
-const Greeting = (name) => {
-    if (name) {
-        return `
-            <h1>Welcome, ${name}!</h1>
-        `
+    return async function() {
+        if (isResolved) {
+            isResolved = false;
+            await callback(...arguments);
+            isResolved = true;
+        }
     }
+};
 
-    return `
-        <h1>Hello!</h1>
-    `
-}
+/**
+ * Returns a user friendly readable date from the provided YYYY-MM-DD format.
+ *
+ * @param {String} date
+ * @returns {String}
+ */
+const dateToText = (date) => {
+    const parts = date.split('-');
+    const year = Number(parts[0]);
+    const month = Number(parts[1]);
+    const day = Number(parts[2]);
+    const monthNames = [ 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December' ];
 
-// Example of a pure function that renders infomation requested from the backend
-const ImageOfTheDay = (apod) => {
+    return `${monthNames[month - 1]} ${day}, ${year}`;
+};
 
-    // If image does not already exist, or it is not from today -- request it again
-    const today = new Date()
-    const photodate = new Date(apod.date)
-    console.log(photodate.getDate(), today.getDate());
 
-    console.log(photodate.getDate() === today.getDate());
-    if (!apod || apod.date === today.getDate() ) {
-        getImageOfTheDay(store)
-    }
+// COMPONENTS
+const RoverLinks = (rovers, activeLink) => {
+    return rovers.reduce((markup, rover) => {
+        const url = new URL(`#${rover.toLowerCase()}`, document.baseURI);
+        const isActive = activeLink === url.href ? ' data-is-active="true"' : '';
 
-    // check if the photo of the day is actually type video!
-    if (apod.media_type === "video") {
+        return markup.concat(`
+            <li>
+                <a href="${url.href}"${isActive}>${rover}</a>
+            </li>
+        `);
+    }, '');
+};
+
+const RoverImages = (images) => {
+    if (images.size > 0) {
+        const listItems = images.reduce((markup, src, idx) => {
+            return markup.concat(
+                `<li><img src="${src}" alt="Rover image ${idx + 1}"/></li>`
+            );
+        }, '');
+
         return (`
-            <p>See today's featured video <a href="${apod.url}">here</a></p>
-            <p>${apod.title}</p>
-            <p>${apod.explanation}</p>
-        `)
-    } else {
-        return (`
-            <img src="${apod.image.url}" height="350px" width="100%" />
-            <p>${apod.image.explanation}</p>
-        `)
+            <section class="photos">
+                <ul>${listItems}</ul>
+            </section>
+        `);
     }
-}
 
-// ------------------------------------------------------  API CALLS
+    return '<p>Select a link to view images</p>'
+};
 
-// Example API call
-const getImageOfTheDay = (state) => {
-    let { apod } = state
+const RoverAttributes = (attributes) => {
+    if (attributes.size > 0) {
+        return (`
+            <section class="attributes">
+                <h2>${attributes.get('name')} Rover</h2>
+                <ul>
+                    <li>Launch date: ${dateToText(attributes.get('launch_date'))}</li>
+                    <li>Landing date: ${dateToText(attributes.get('landing_date'))}</li>
+                    <li>Date of last photo transmission: ${dateToText(attributes.get('earth_date'))}</li>
+                    <li>Status: ${attributes.get('status')}</li>
+                </ul>
+            </section>
+        `);
+    }
+    return '';
+};
 
-    fetch(`http://localhost:3000/apod`)
-        .then(res => res.json())
-        .then(apod => updateStore(store, { apod }))
 
-    return data
-}
+// API CALLS
+const makeRequest = async (href, store) => {
+    try {
+        const res = await fetch(href.replace('#', ''));
+        const data = await res.json();
+
+        if (data && data.photos) {
+            const { photos } = data;
+            const { earth_date, rover } = photos[0];
+            const roverImages = photos.map((photo) => photo.img_src);
+            const roverAttributes = { earth_date, ...rover };
+
+            updateStore(store, {
+                active: href,
+                roverImages,
+                roverAttributes
+            });
+
+            return true;
+        }
+
+        throw Error('Resource responded with invalid data');
+    } catch (error) {
+        console.error(error);
+        return false;
+    }
+};
+
+
+// EVENTS
+// Prevent subsequent fetch requests if one is already in process
+const makeCulledRequest = cullExecutionUntilResolved(makeRequest);
+
+root.addEventListener('click', (evt) => {
+    const { target } = evt;
+
+    if (target.tagName.toLowerCase() === 'a') {
+        evt.preventDefault();
+
+        // Prevent fetch requests for links that are already active
+        if (!target.dataset.isActive) {
+            makeCulledRequest(target.href, store);
+        }
+    }
+});
